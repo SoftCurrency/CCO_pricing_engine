@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CCO Pricing Engine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Space Mono', monospace;
+            background-color: #050505; /* Deep terminal black */
+            color: #22c55e; /* Neon green default */
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+
+        /* Scanline effect overlay */
+        .scanlines {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0,0,0,0.2) 50%,
+                rgba(0,0,0,0.2)
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 50;
+            opacity: 0.6;
+        }
+
+        .crt-flicker {
+            animation: flicker 0.15s infinite;
+        }
+
+        @keyframes flicker {
+            0% { opacity: 0.95; }
+            100% { opacity: 1; }
+        }
+
+        .flash-red {
+            animation: flash-red-anim 1s infinite;
+            color: #ef4444; /* Tailwind red-500 */
+        }
+
+        @keyframes flash-red-anim {
+            0%, 100% { opacity: 1; text-shadow: 0 0 10px #ef4444; }
+            50% { opacity: 0.3; text-shadow: none; }
+        }
+
+        .terminal-border {
+            border: 1px solid #166534; /* Green-800 */
+            box-shadow: 0 0 10px rgba(22, 101, 52, 0.2);
+        }
+
+        .terminal-border-red {
+            border: 1px solid #991b1b;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #050505; border-left: 1px solid #166534; }
+        ::-webkit-scrollbar-thumb { background: #166534; }
+        ::-webkit-scrollbar-thumb:hover { background: #22c55e; }
+        
+        select {
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2322c55e%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+            background-repeat: no-repeat;
+            background-position: right .7rem top 50%;
+            background-size: .65rem auto;
+        }
+    </style>
+</head>
+<body class="crt-flicker">
+    <div class="scanlines"></div>
+
+    <div class="max-w-7xl mx-auto p-4 sm:p-6 relative z-10 min-h-screen flex flex-col gap-6">
+        
+        <!-- Header -->
+        <header class="flex justify-between items-end border-b-2 border-green-800 pb-2">
+            <div>
+                <h1 class="text-2xl sm:text-4xl font-bold tracking-tighter">CCO_PRICING_ENGINE</h1>
+                <p class="text-green-700 text-sm mt-1">> SYSTEM.TERMINAL.V1.0 // AUTHORIZED_PERSONNEL_ONLY</p>
+            </div>
+            <div class="hidden sm:block text-right text-sm text-green-700">
+                <p>SYS_TIME: <span id="sys-time"></span></p>
+                <p>STATUS: <span class="text-green-500 animate-pulse">ONLINE</span></p>
+            </div>
+        </header>
+
+        <!-- Controls Section -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Depreciation -->
+            <div class="terminal-border bg-black p-4 flex flex-col">
+                <label class="text-sm text-green-600 mb-2 font-bold uppercase">> ASSET_DEPRECIATION (COLLATERAL)</label>
+                <select id="depreciation" class="bg-gray-950 text-green-400 border border-green-800 p-2 outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400 font-mono transition-colors">
+                    <option value="0.10">10-Year (10%/yr drop)</option>
+                    <option value="0.20">5-Year (20%/yr drop)</option>
+                    <option value="0.333">3-Year (33.3%/yr drop)</option>
+                </select>
+            </div>
+
+            <!-- Market Demand -->
+            <div class="terminal-border bg-black p-4 flex flex-col">
+                <label class="text-sm text-green-600 mb-2 font-bold uppercase">> MKT_DEMAND (BASE_DEFAULT_RATE)</label>
+                <select id="demand" class="bg-gray-950 text-green-400 border border-green-800 p-2 outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400 font-mono transition-colors">
+                    <option value="0.01">Exponential Growth (1% base)</option>
+                    <option value="0.05">Linear Growth (5% base)</option>
+                    <option value="0.15">Plateaued Demand (15% base)</option>
+                </select>
+            </div>
+
+            <!-- Correlation -->
+            <div class="terminal-border bg-black p-4 flex flex-col">
+                <label class="text-sm text-green-600 mb-2 font-bold uppercase">> RISK_CORRELATION (TIMING)</label>
+                <select id="correlation" class="bg-gray-950 text-green-400 border border-green-800 p-2 outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400 font-mono transition-colors">
+                    <option value="low">Low (Even Spread)</option>
+                    <option value="high">High (The Earthquake - Y3)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Main Display Area -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-grow">
+            
+            <!-- Readout Panel -->
+            <div class="lg:col-span-1 flex flex-col gap-6">
+                <!-- Final Cash Reserve -->
+                <div id="status-panel" class="terminal-border bg-black p-6 flex flex-col justify-center items-center h-48 transition-colors duration-300">
+                    <h2 class="text-green-700 text-sm uppercase tracking-widest mb-2">> Y5_FINAL_CASH_RESERVE</h2>
+                    <div id="reserve-display" class="text-4xl sm:text-6xl font-bold tracking-tighter">
+                        $0.00M
+                    </div>
+                    <div id="bankrupt-warning" class="hidden mt-4 text-xl font-bold flash-red uppercase tracking-widest">
+                        !!! BANKRUPT !!!
+                    </div>
+                </div>
+
+                <!-- Metrics Summary -->
+                <div class="terminal-border bg-black p-4 flex-grow">
+                    <h3 class="text-green-700 text-sm uppercase border-b border-green-900 pb-2 mb-4">> PORTFOLIO_INIT_PARAMS</h3>
+                    <ul class="space-y-3 text-sm">
+                        <li class="flex justify-between">
+                            <span class="text-green-600">INITIAL_RESERVE:</span>
+                            <span>$100.00M</span>
+                        </li>
+                        <li class="flex justify-between">
+                            <span class="text-green-600">INITIAL_LOAN_BOOK:</span>
+                            <span>$1,000.00M</span>
+                        </li>
+                        <li class="flex justify-between">
+                            <span class="text-green-600">AMORTIZATION_RATE:</span>
+                            <span>20% LINEAR / YR</span>
+                        </li>
+                        <li class="flex justify-between">
+                            <span class="text-green-600">INSURANCE_PREMIUM:</span>
+                            <span>3% OUTSTANDING / YR</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Chart Panel -->
+            <div id="chart-panel" class="lg:col-span-2 terminal-border bg-black p-4 relative min-h-[400px]">
+                <div class="absolute top-4 left-4 text-green-800 text-xs uppercase z-0">> CASH_RESERVE_TRAJECTORY</div>
+                <div class="w-full h-full relative z-10">
+                    <canvas id="reserveChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Data Table -->
+        <div class="terminal-border bg-black overflow-x-auto">
+            <table class="w-full text-right text-sm">
+                <thead>
+                    <tr class="bg-gray-900 border-b border-green-800 text-green-600">
+                        <th class="p-3 text-left">YEAR</th>
+                        <th class="p-3">LOAN_BAL ($M)</th>
+                        <th class="p-3">COLLATERAL ($M)</th>
+                        <th class="p-3">SHADOW_GAP ($M)</th>
+                        <th class="p-3">PREMIUM ($M)</th>
+                        <th class="p-3">LOSS ($M)</th>
+                        <th class="p-3">RESERVE ($M)</th>
+                    </tr>
+                </thead>
+                <tbody id="data-table-body" class="divide-y divide-green-900">
+                    <!-- Rows populated by JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Set System Time
+        setInterval(() => {
+            document.getElementById('sys-time').innerText = new Date().toISOString().replace('T', ' ').substring(0, 19);
+        }, 1000);
+
+        // Chart Instance
+        let reserveChart = null;
+
+        // Formatter for currency
+        const formatter = new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+
+        function formatM(num) {
+            return formatter.format(num) + 'M';
+        }
+
+        // Run Simulation Math
+        function calculateSimulation(depRate, baseDefaultRate, correlation) {
+            let reserve = 100.0; // $100M initial
+            const initialLoan = 1000.0; // $1B initial
+            
+            let data = [];
+            let isBankrupt = false;
+
+            // Push Year 0
+            data.push({
+                year: 0,
+                loan: initialLoan,
+                collateral: initialLoan,
+                gap: 0,
+                premium: 0,
+                loss: 0,
+                reserve: reserve
+            });
+
+            for (let t = 1; t <= 5; t++) {
+                // Calculate outstanding loan balance (start of year t)
+                // Linear amortization of 20% applied AFTER year 1 starts.
+                // t=1: 1000 * (1 - 0.2*0) = 1000
+                // t=2: 1000 * (1 - 0.2*1) = 800
+                let outstandingLoan = initialLoan * (1 - 0.2 * (t - 1));
+
+                // Calculate collateral value (start of year t)
+                let collateralValue = initialLoan * Math.max(0, 1 - depRate * (t - 1));
+
+                // Calculate Shadow Gap
+                let shadowGap = Math.max(0, outstandingLoan - collateralValue);
+
+                // Premium collected (3% of outstanding loan)
+                let premium = 0.03 * outstandingLoan;
+
+                // Effective Default Rate
+                let effectiveDefaultRate = 0;
+                if (correlation === 'low') {
+                    effectiveDefaultRate = baseDefaultRate;
+                } else if (correlation === 'high') {
+                    if (t === 3) {
+                        effectiveDefaultRate = baseDefaultRate * 15; // 5 years * 3
+                    } else {
+                        effectiveDefaultRate = 0;
+                    }
+                }
+
+                // Annual Loss
+                let annualLoss = effectiveDefaultRate * shadowGap;
+
+                // End of Year Reserve
+                reserve = reserve + premium - annualLoss;
+
+                if (reserve < 0) {
+                    isBankrupt = true;
+                }
+
+                data.push({
+                    year: t,
+                    loan: outstandingLoan,
+                    collateral: collateralValue,
+                    gap: shadowGap,
+                    premium: premium,
+                    loss: annualLoss,
+                    reserve: reserve
+                });
+            }
+
+            return { data, isBankrupt };
+        }
+
+        function updateUI() {
+            // Get values from DOM
+            const depRate = parseFloat(document.getElementById('depreciation').value);
+            const baseDefaultRate = parseFloat(document.getElementById('demand').value);
+            const correlation = document.getElementById('correlation').value;
+
+            // Calculate
+            const result = calculateSimulation(depRate, baseDefaultRate, correlation);
+            const data = result.data;
+            const finalReserve = data[5].reserve;
+            const isBankrupt = result.isBankrupt;
+
+            // 1. Update Final Cash Reserve Display
+            const reserveDisplay = document.getElementById('reserve-display');
+            const statusPanel = document.getElementById('status-panel');
+            const bankruptWarning = document.getElementById('bankrupt-warning');
+            const chartPanel = document.getElementById('chart-panel');
+
+            reserveDisplay.innerText = formatM(finalReserve);
+            
+            if (isBankrupt) {
+                reserveDisplay.classList.add('flash-red');
+                reserveDisplay.classList.remove('text-green-500');
+                statusPanel.classList.replace('terminal-border', 'terminal-border-red');
+                chartPanel.classList.replace('terminal-border', 'terminal-border-red');
+                bankruptWarning.classList.remove('hidden');
+            } else {
+                reserveDisplay.classList.remove('flash-red');
+                reserveDisplay.classList.add('text-green-500');
+                statusPanel.classList.replace('terminal-border-red', 'terminal-border');
+                chartPanel.classList.replace('terminal-border-red', 'terminal-border');
+                bankruptWarning.classList.add('hidden');
+            }
+
+            // 2. Update Table
+            const tbody = document.getElementById('data-table-body');
+            tbody.innerHTML = ''; // clear
+            
+            data.forEach((row, index) => {
+                // Skip year 0 in detailed table for cleaner look (starts at year 1 usually), 
+                // but let's include it to show start state.
+                const tr = document.createElement('tr');
+                if (row.reserve < 0) {
+                    tr.classList.add('text-red-500', 'bg-red-950/20');
+                } else {
+                    tr.classList.add('hover:bg-gray-900', 'transition-colors');
+                }
+                
+                tr.innerHTML = `
+                    <td class="p-3 text-left font-bold text-green-600">Y${row.year}</td>
+                    <td class="p-3">${row.loan.toFixed(2)}</td>
+                    <td class="p-3">${row.collateral.toFixed(2)}</td>
+                    <td class="p-3 ${row.gap > 0 ? 'text-amber-500' : ''}">${row.gap.toFixed(2)}</td>
+                    <td class="p-3 text-green-400">+${row.premium.toFixed(2)}</td>
+                    <td class="p-3 ${row.loss > 0 ? 'text-red-500' : ''}">-${row.loss.toFixed(2)}</td>
+                    <td class="p-3 font-bold">${row.reserve.toFixed(2)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // 3. Update Chart
+            updateChart(data.map(d => d.reserve), isBankrupt);
+        }
+
+        function updateChart(reserveData, isBankrupt) {
+            const ctx = document.getElementById('reserveChart').getContext('2d');
+            
+            const lineColor = isBankrupt ? '#ef4444' : '#22c55e'; // Red if bankrupt, else Green
+            const bgColor = isBankrupt ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)';
+
+            if (reserveChart) {
+                // Update existing chart
+                reserveChart.data.datasets[0].data = reserveData;
+                reserveChart.data.datasets[0].borderColor = lineColor;
+                reserveChart.data.datasets[0].backgroundColor = bgColor;
+                reserveChart.update();
+            } else {
+                // Create new chart
+                reserveChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: ['Year 0', 'Year 1', 'Year 2', 'Year 3', 'Year 4', 'Year 5'],
+                        datasets: [{
+                            label: 'Cash Reserve ($M)',
+                            data: reserveData,
+                            borderColor: lineColor,
+                            backgroundColor: bgColor,
+                            borderWidth: 2,
+                            pointBackgroundColor: '#050505',
+                            pointBorderColor: lineColor,
+                            pointBorderWidth: 2,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            fill: true,
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        color: '#22c55e',
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                                titleColor: '#22c55e',
+                                bodyColor: '#22c55e',
+                                borderColor: '#166534',
+                                borderWidth: 1,
+                                font: { family: "'Space Mono', monospace" },
+                                callbacks: {
+                                    label: function(context) {
+                                        return formatM(context.parsed.y);
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                grid: { color: '#166534', borderDash: [2, 4] },
+                                ticks: { 
+                                    color: '#16a34a',
+                                    font: { family: "'Space Mono', monospace" },
+                                    callback: function(value) { return '$' + value + 'M'; }
+                                }
+                            },
+                            x: {
+                                grid: { color: '#166534', borderDash: [2, 4] },
+                                ticks: { 
+                                    color: '#16a34a',
+                                    font: { family: "'Space Mono', monospace" }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const inputs = ['depreciation', 'demand', 'correlation'];
+            inputs.forEach(id => {
+                document.getElementById(id).addEventListener('change', updateUI);
+            });
+
+            // Initial render
+            updateUI();
+        });
+    </script>
+</body>
+</html>
